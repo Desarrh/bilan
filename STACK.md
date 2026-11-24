@@ -47,7 +47,8 @@ Réglages `%APPDATA%\Bilan\settings.json` (`auteur`, `racines`, `exclure`, `memo
 | 1re image | 32 ms |
 | Chargement des sources (12 semaines, 9 dépôts) | ≈ 260 ms |
 | Exe release | 5,6 Mo |
-| RAM, CPU au repos | non mesurés |
+| RAM privée (dist, après chargement) | 18,4 Mo |
+| CPU au repos | non mesuré |
 
 ## 8. Limites connues
 - Jeu **approximatif** : Ultimate ne photographie qu'au rafraîchissement de sa bibliothèque (jour UTC) ; Bilan ajoute une photo à chaque lancement. Un écart entre deux photos éloignées est attribué à la semaine de la photo finale.
