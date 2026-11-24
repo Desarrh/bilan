@@ -10,7 +10,9 @@ fn main() {
             .set("InternalName", "bilan")
             .set("OriginalFilename", "Bilan.exe")
             .set("CompanyName", "Bilan")
-            .set("LegalCopyright", "");
+            .set("LegalCopyright", "")
+            // Marqueur pour les autres applis (comme VigieCli) : options de ligne de commande prises en charge.
+            .set("BilanCli", "resume");
         if let Err(e) = res.compile() {
             println!("cargo:warning=icône non intégrée : {e}");
         }

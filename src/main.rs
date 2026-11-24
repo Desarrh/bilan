@@ -224,6 +224,12 @@ fn window_icon() -> Option<winit::window::Icon> {
 
 fn main() {
     T0.get_or_init(Instant::now);
+    // Résumé texte pour le Lanceur : avant l'instance unique, aucune fenêtre ouverte ni ramenée.
+    if std::env::args().any(|a| a == "--resume") {
+        use std::io::Write;
+        let _ = writeln!(std::io::stdout(), "{}", app::resume(&app::Settings::load()));
+        return;
+    }
     if socle::testmode::enabled() {
         socle::testmode::low_priority();
     }

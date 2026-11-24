@@ -85,6 +85,8 @@ pub fn charger(s: &Settings) -> Vec<Semaine> {
         let m = t.spawn(|| memoire::charger(&lundis, mexe.as_deref()));
         (d.join().unwrap_or_default(), j.join().unwrap_or_default(), sp.join().unwrap_or_default(), m.join().unwrap_or_default())
     });
+    // Prépare `--resume` : la semaine écoulée est l'avant-dernière.
+    ecrire_cache_dev(lundis[SEMAINES - 2], d.get(SEMAINES - 2).cloned().flatten());
     lundis
         .iter()
         .enumerate()
@@ -96,6 +98,64 @@ pub fn charger(s: &Settings) -> Vec<Semaine> {
             memoire: m.get(i).cloned().flatten(),
         })
         .collect()
+}
+
+/// `Bilan.exe --resume` : une ligne sur la semaine écoulée, sans fenêtre (pour le Lanceur).
+/// Lecture seule : ni photo du temps de jeu, ni appel à Mémoire (trop lent pour ce résumé).
+pub fn resume(s: &Settings) -> String {
+    let lundis = [derniere_semaine()];
+    let ult = jeu::dossier_ultimate();
+    let fsport = sport::trouver(&sport::dossiers());
+    let r = git::Reglages { racines: &s.racines, auteur: &s.auteur, exclure: &s.exclure };
+    let (d, j, sp) = std::thread::scope(|t| {
+        // git est la seule source lente : une semaine terminée ne bouge plus, son total est mis en cache.
+        let d = t.spawn(|| match lire_cache_dev(lundis[0]) {
+            Some(c) => vec![c],
+            None => {
+                let d = git::charger(&lundis, &r);
+                ecrire_cache_dev(lundis[0], d.first().cloned().flatten());
+                d
+            }
+        });
+        let j = t.spawn(|| jeu::charger(&lundis, &ult, &photos_jeu()));
+        let sp = t.spawn(|| sport::charger(&lundis, fsport.as_deref()));
+        (d.join().unwrap_or_default(), j.join().unwrap_or_default(), sp.join().unwrap_or_default())
+    });
+    let mut parts = Vec::new();
+    if let Some(j) = j.into_iter().next().flatten() {
+        parts.push(format!("{} h de jeu (estimé)", un(j.minutes as f64 / 60.0)));
+    }
+    if let Some(d) = d.into_iter().next().flatten() {
+        parts.push(format!("{} commit{}", d.commits, if d.commits > 1 { "s" } else { "" }));
+    }
+    if let Some(sp) = sp.into_iter().next().flatten() {
+        parts.push(format!("{} séance{}", sp.seances, if sp.seances > 1 { "s" } else { "" }));
+    }
+    if parts.is_empty() { "Semaine : aucune donnée".into() } else { format!("Semaine : {}", parts.join(", ")) }
+}
+
+#[derive(Serialize, Deserialize)]
+struct CacheDev {
+    lundi: String,
+    commits: Option<u32>,
+}
+
+fn cache_dev() -> PathBuf {
+    socle::paths::config_dir(APP).join("resume-dev.json")
+}
+
+/// `Some(None)` : semaine en cache sans commit ni source ; `None` : pas de cache pour ce lundi.
+fn lire_cache_dev(lundi: NaiveDate) -> Option<Option<crate::modele::Dev>> {
+    let c: CacheDev = serde_json::from_slice(&std::fs::read(cache_dev()).ok()?).ok()?;
+    (c.lundi == lundi.to_string()).then(|| c.commits.map(|n| crate::modele::Dev { commits: n, ..Default::default() }))
+}
+
+fn ecrire_cache_dev(lundi: NaiveDate, d: Option<crate::modele::Dev>) {
+    let c = CacheDev { lundi: lundi.to_string(), commits: d.map(|d| d.commits) };
+    if let Ok(b) = serde_json::to_vec(&c) {
+        let _ = std::fs::create_dir_all(socle::paths::config_dir(APP));
+        let _ = std::fs::write(cache_dev(), b);
+    }
 }
 
 enum Msg {
