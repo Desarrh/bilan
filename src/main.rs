@@ -35,6 +35,9 @@ struct Runner {
     discret: bool,
     started: bool,
     images: u32,
+    instance: Option<socle::instance::Instance>,
+    /// Un 2e lancement demande de ramener la fenêtre.
+    ramener: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Runner {
@@ -78,6 +81,10 @@ impl Runner {
             } else {
                 gfx.window.request_redraw();
             }
+        }
+        if self.ramener.swap(false, std::sync::atomic::Ordering::Relaxed) && !socle::testmode::enabled() {
+            gfx.window.set_minimized(false);
+            gfx.window.focus_window();
         }
         if app.quitter {
             self.save();
@@ -140,6 +147,16 @@ impl ApplicationHandler<Instant> for Runner {
         };
         if self.app.is_none() {
             self.app = Some(app::App::new(&self.ctx, self.settings.take().unwrap_or_default()));
+            // Instance unique : un 2e lancement manuel ramène cette fenêtre (pas `--auto`, qui reste discret).
+            if let Some(inst) = self.instance.take() {
+                let (r, c) = (self.ramener.clone(), self.ctx.clone());
+                inst.listen(move |args| {
+                    if !args.iter().any(|a| a == "--auto") {
+                        r.store(true, std::sync::atomic::Ordering::Relaxed);
+                        c.request_repaint();
+                    }
+                });
+            }
         }
         window.request_redraw();
         self.gfx = Some(Gfx { window, egui, _context: context, surface, renderer: EguiSoftwareRender::new(ColorFieldOrder::Bgra) });
@@ -228,10 +245,11 @@ fn main() {
         }
     }
     // Déjà ouvert : l'instance existante suffit (on ne lui vole pas le focus).
-    let mut _instance = None;
-    match socle::instance::start(app::APP, &[]) {
+    let mut instance = None;
+    let args: Vec<String> = if discret { vec!["--auto".into()] } else { vec![] };
+    match socle::instance::start(app::APP, &args) {
         socle::instance::Start::Forwarded if !after_update => return,
-        socle::instance::Start::Primary(i) => _instance = Some(i),
+        socle::instance::Start::Primary(i) => instance = Some(i),
         _ => {}
     }
 
@@ -241,6 +259,6 @@ fn main() {
     ctx.set_request_repaint_callback(move |info| {
         let _ = proxy.send_event(Instant::now() + info.delay);
     });
-    let mut runner = Runner { ctx, gfx: None, app: None, settings: Some(settings), next_repaint: None, discret, started: false, images: 0 };
+    let mut runner = Runner { ctx, gfx: None, app: None, settings: Some(settings), next_repaint: None, discret, started: false, images: 0, instance, ramener: Default::default() };
     let _ = event_loop.run_app(&mut runner);
 }
